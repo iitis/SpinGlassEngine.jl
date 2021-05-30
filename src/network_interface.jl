@@ -118,7 +118,7 @@ end
 
 function generate_boundary_states(
     network::AbstractGibbsNetwork,
-    σ::Vector{Int},
+    σ::AbstractVector{Int},
     node::S
 ) where {S, T}
     [
@@ -130,7 +130,7 @@ end
 
 function local_state_for_node(
     network::AbstractGibbsNetwork{S, T},
-    σ::Vector{Int},
+    σ::AbstractVector{Int},
     w::S
 ) where {S, T}
     k = node_index(network, w)

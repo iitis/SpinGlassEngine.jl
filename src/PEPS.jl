@@ -1,3 +1,4 @@
+using SpinGlassTensors
 export PEPSNetwork, contract_network
 export generate_boundary, peps_tensor, node_from_index
 
@@ -16,6 +17,19 @@ function peps_lattice(m, n)
 end
 
 
+
+@memoize Dict function _right_env(peps, i::Int, ∂v::Vector{Int})
+    W = MPO(peps, i)
+    ψ = MPS(peps, i+1)    
+    right_env(ψ, W, ∂v)
+end
+
+@memoize Dict function _left_env(peps, i::Int, ∂v::Vector{Int})
+    ψ = MPS(peps, i+1)
+    left_env(ψ, ∂v)
+end
+
+
 struct PEPSNetwork <: AbstractGibbsNetwork{NTuple{2, Int}, NTuple{2, Int}}
     factor_graph::LabelledGraph{T, NTuple{2, Int}} where T
     network_graph::LabelledGraph{S, NTuple{2, Int}} where S
@@ -28,7 +42,6 @@ struct PEPSNetwork <: AbstractGibbsNetwork{NTuple{2, Int}, NTuple{2, Int}}
     bond_dim::Int
     var_tol::Real
     sweeps::Int
-
 
     function PEPSNetwork(
         m::Int,
@@ -46,6 +59,8 @@ struct PEPSNetwork <: AbstractGibbsNetwork{NTuple{2, Int}, NTuple{2, Int}}
         if !is_compatible(factor_graph, ng)
             throw(ArgumentError("Factor graph not compatible with given network."))
         end
+        
+
         new(factor_graph, ng, vmap, m, n, nrows, ncols, β, bond_dim, var_tol, sweeps)
     end
 end
@@ -166,7 +181,7 @@ function _normalize_probability(prob::Vector{T}) where {T <: Number}
 end
 
 
-function conditional_probability(peps::PEPSNetwork, v::Vector{Int},
+function conditional_probability(peps::PEPSNetwork, v::AbstractVector{Int},
 )
 
     i, j = node_from_index(peps, length(v)+1)
@@ -175,13 +190,15 @@ function conditional_probability(peps::PEPSNetwork, v::Vector{Int},
     W = MPO(peps, i)
     ψ = MPS(peps, i+1)
 
-    L = left_env(ψ, ∂v[1:j-1])
-    R = right_env(ψ, W, ∂v[j+2:peps.ncols+1])
+    #L = left_env(ψ, ∂v[1:j-1])
+    L = _left_env(peps, i, ∂v[1:j-1])
+    #R = right_env(ψ, W, ∂v[j+2:peps.ncols+1])
+    R = _right_env(peps, i, ∂v[j+2:peps.ncols+1])
     A = peps_tensor(peps, i, j)
 
     l, u = ∂v[j:j+1]
     M = ψ[j]
-    Ã = A[l, u, :, :, :]
+    Ã = @view A[l, u, :, :, :]
     @tensor prob[σ] := L[x] * M[x, d, y] *
                        Ã[r, d, σ] * R[y, r] order = (x, d, r, y)
 
@@ -203,7 +220,7 @@ function bond_energy(network, u::NTuple{2, Int}, v::NTuple{2, Int}, σ::Int)
     vec(energies)
 end
 
-function update_energy(network::PEPSNetwork, σ::Vector{Int})
+function update_energy(network::PEPSNetwork, σ::AbstractVector{Int})
     i, j = node_from_index(network, length(σ)+1)
     bond_energy(network, (i, j), (i, j-1), local_state_for_node(network, σ, (i, j-1))) +
     bond_energy(network, (i, j), (i-1, j), local_state_for_node(network, σ, (i-1, j))) +
